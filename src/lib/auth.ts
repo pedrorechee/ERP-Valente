@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 import type { UserRole } from '@/types/database'
@@ -11,11 +10,9 @@ export interface SessionRole {
 // Resolve o usuário/role atual honrando o dev-bypass (mesmo padrão do layout).
 // Em dev-bypass não há sessão Supabase; tratamos como 'owner' (acesso total).
 export async function getSessionRole(): Promise<SessionRole> {
+  // Acesso convidado (sem login): trata como dono enquanto a flag estiver ligada
   if (GUEST_LOGIN_ENABLED) {
-    const cookieStore = await cookies()
-    if (cookieStore.get('dev-bypass')?.value === '1') {
-      return { userId: null, role: 'owner' }
-    }
+    return { userId: null, role: 'owner' }
   }
 
   const supabase = await createClient()

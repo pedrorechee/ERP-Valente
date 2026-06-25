@@ -1,12 +1,11 @@
-import { cookies } from 'next/headers'
 import { createClient } from './server'
 import { createServiceClient } from './service'
 import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 
+// Acesso convidado (sem login): quando a flag está ligada, todo acesso usa o
+// service client como dono — sem exigir cookie. Desligar a flag restaura o login.
 async function isDevBypass(): Promise<boolean> {
-  if (!GUEST_LOGIN_ENABLED) return false
-  const cookieStore = await cookies()
-  return cookieStore.get('dev-bypass')?.value === '1'
+  return GUEST_LOGIN_ENABLED
 }
 
 // Para Server Actions: retorna client + userId

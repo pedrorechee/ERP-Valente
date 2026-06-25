@@ -5,12 +5,10 @@ import { canAccessRoute } from '@/lib/permissions'
 import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 
 export async function proxy(request: NextRequest) {
-  // Bypass de autenticacao (entrar sem login) — dev sempre; prod só com a flag
-  if (
-    GUEST_LOGIN_ENABLED &&
-    request.cookies.get('dev-bypass')?.value === '1' &&
-    !request.nextUrl.pathname.startsWith('/login')
-  ) {
+  // Acesso convidado (sem login) — dev sempre; prod só com NEXT_PUBLIC_ALLOW_GUEST=1.
+  // Libera qualquer rota direta (ex.: /obras) sem exigir autenticação.
+  // A página /login continua acessível para configurar o login depois.
+  if (GUEST_LOGIN_ENABLED && !request.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.next({ request })
   }
 

@@ -1,6 +1,5 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
 import { Bell } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -41,29 +40,27 @@ export default async function DashboardLayout({
   const { settings, logoUrl } = await getCompanyInfo()
   const companyName = companyDisplayName(settings)
 
-  // Bypass de autenticacao (entrar sem login) — dev sempre; prod só com a flag
+  // Acesso convidado (sem login) — dev sempre; prod só com NEXT_PUBLIC_ALLOW_GUEST=1.
+  // Libera todo o painel como dono sem exigir autenticação.
   if (GUEST_LOGIN_ENABLED) {
-    const cookieStore = await cookies()
-    if (cookieStore.get('dev-bypass')?.value === '1') {
-      return (
-        <CompanyProvider companyName={companyName} logoUrl={logoUrl}>
-          <div className="flex h-screen overflow-hidden bg-gray-100">
-            <div className="hidden md:flex md:shrink-0">
-              <Sidebar role="owner" userName="Convidado" userEmail="acesso sem login" />
-            </div>
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <Header
-                role="owner"
-                userName="Convidado"
-                userEmail="acesso sem login"
-                notificationBell={<NotificationBell initialCount={0} />}
-              />
-              <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
-            </div>
+    return (
+      <CompanyProvider companyName={companyName} logoUrl={logoUrl}>
+        <div className="flex h-screen overflow-hidden bg-gray-100">
+          <div className="hidden md:flex md:shrink-0">
+            <Sidebar role="owner" userName="Convidado" userEmail="acesso sem login" />
           </div>
-        </CompanyProvider>
-      )
-    }
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <Header
+              role="owner"
+              userName="Convidado"
+              userEmail="acesso sem login"
+              notificationBell={<NotificationBell initialCount={0} />}
+            />
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          </div>
+        </div>
+      </CompanyProvider>
+    )
   }
 
   const supabase = await createClient()
