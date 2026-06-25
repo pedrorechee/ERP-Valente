@@ -1,9 +1,10 @@
 import { cookies } from 'next/headers'
 import { createClient } from './server'
 import { createServiceClient } from './service'
+import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 
 async function isDevBypass(): Promise<boolean> {
-  if (process.env.NODE_ENV !== 'development') return false
+  if (!GUEST_LOGIN_ENABLED) return false
   const cookieStore = await cookies()
   return cookieStore.get('dev-bypass')?.value === '1'
 }

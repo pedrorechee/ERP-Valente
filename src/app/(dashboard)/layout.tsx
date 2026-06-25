@@ -8,6 +8,7 @@ import { Header } from '@/components/layout/Header'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { CompanyProvider } from '@/components/layout/CompanyProvider'
 import { getCompanyInfo, companyDisplayName } from '@/lib/company'
+import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 import type { Profile, UserRole } from '@/types/database'
 import { generateNotifications, getUnreadCount } from '@/app/actions/notifications'
 
@@ -40,21 +41,21 @@ export default async function DashboardLayout({
   const { settings, logoUrl } = await getCompanyInfo()
   const companyName = companyDisplayName(settings)
 
-  // Bypass de autenticacao em desenvolvimento
-  if (process.env.NODE_ENV === 'development') {
+  // Bypass de autenticacao (entrar sem login) — dev sempre; prod só com a flag
+  if (GUEST_LOGIN_ENABLED) {
     const cookieStore = await cookies()
     if (cookieStore.get('dev-bypass')?.value === '1') {
       return (
         <CompanyProvider companyName={companyName} logoUrl={logoUrl}>
           <div className="flex h-screen overflow-hidden bg-gray-100">
             <div className="hidden md:flex md:shrink-0">
-              <Sidebar role="owner" userName="Dev User" userEmail="dev@teste.com" />
+              <Sidebar role="owner" userName="Convidado" userEmail="acesso sem login" />
             </div>
             <div className="flex flex-1 flex-col overflow-hidden">
               <Header
                 role="owner"
-                userName="Dev User"
-                userEmail="dev@teste.com"
+                userName="Convidado"
+                userEmail="acesso sem login"
                 notificationBell={<NotificationBell initialCount={0} />}
               />
               <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>

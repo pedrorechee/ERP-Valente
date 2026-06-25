@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { signIn, devLogin } from '@/app/actions/auth'
+import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 import { toast } from 'sonner'
 
 function SubmitButton() {
@@ -92,14 +93,14 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        {process.env.NODE_ENV === 'development' && (
+        {GUEST_LOGIN_ENABLED && (
           <div className="mt-4 border-t border-dashed border-gold/40 pt-4">
             <form action={devLogin}>
               <button
                 type="submit"
                 className="w-full rounded-md border border-dashed border-gold/60 py-2 text-xs text-gray-400 transition-colors hover:border-gold hover:text-brown"
               >
-                Entrar sem login (somente em desenvolvimento)
+                Entrar sem login
               </button>
             </form>
           </div>

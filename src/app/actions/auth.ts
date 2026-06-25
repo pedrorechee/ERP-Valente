@@ -3,9 +3,10 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 
 export async function devLogin() {
-  if (process.env.NODE_ENV !== 'development') return
+  if (!GUEST_LOGIN_ENABLED) return
   const cookieStore = await cookies()
   cookieStore.set('dev-bypass', '1', { path: '/', httpOnly: true })
   redirect('/dashboard')

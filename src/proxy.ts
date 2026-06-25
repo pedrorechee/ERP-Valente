@@ -2,11 +2,12 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { UserRole } from '@/types/database'
 import { canAccessRoute } from '@/lib/permissions'
+import { GUEST_LOGIN_ENABLED } from '@/lib/guest'
 
 export async function proxy(request: NextRequest) {
-  // Bypass de autenticacao em desenvolvimento
+  // Bypass de autenticacao (entrar sem login) — dev sempre; prod só com a flag
   if (
-    process.env.NODE_ENV === 'development' &&
+    GUEST_LOGIN_ENABLED &&
     request.cookies.get('dev-bypass')?.value === '1' &&
     !request.nextUrl.pathname.startsWith('/login')
   ) {
