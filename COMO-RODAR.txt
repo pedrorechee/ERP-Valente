@@ -1,0 +1,76 @@
+========================================
+  ERP VALENTE — COMO RODAR O PROJETO
+========================================
+
+PRE-REQUISITOS
+--------------
+- Node.js instalado (versão 18 ou superior)
+- npm instalado (vem junto com o Node.js)
+- Arquivo .env.local configurado na raiz do projeto (ja existe no repositorio)
+
+
+PASSO A PASSO
+-------------
+
+1. INSTALAR AS DEPENDENCIAS
+   Abra o terminal na pasta do projeto e rode:
+
+   npm install
+
+   Aguarde terminar. Só precisa fazer isso uma vez (ou quando o package.json mudar).
+
+
+2. RODAR EM DESENVOLVIMENTO
+   Para iniciar o servidor local:
+
+   npm run dev
+
+   O sistema vai abrir em: http://localhost:3000
+
+   O servidor recarrega automaticamente quando voce salva um arquivo.
+
+
+3. PARAR O SERVIDOR
+   Pressione Ctrl + C no terminal.
+
+
+VARIAVEIS DE AMBIENTE (.env.local)
+-----------------------------------
+O arquivo .env.local precisa ter as seguintes variaveis do Supabase:
+
+   NEXT_PUBLIC_SUPABASE_URL=sua_url_do_supabase
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon_do_supabase
+
+Esses valores estao no painel do Supabase em:
+  Project Settings > API > Project URL e anon public key
+
+
+OUTROS COMANDOS UTEIS
+----------------------
+npm run build    → Gera a versao de producao (para deploy)
+npm run start    → Roda a versao de producao localmente (rodar apos o build)
+npm run lint     → Verifica erros de codigo
+
+
+DEPLOY (PRODUCAO)
+-----------------
+O projeto esta configurado para deploy na Vercel.
+Ao fazer push para o GitHub, o deploy acontece automaticamente
+se o repositorio estiver conectado a um projeto Vercel.
+
+
+BANCO DE DADOS (SUPABASE)
+--------------------------
+As migrations SQL ficam na pasta /sql.
+Para aplicar uma migration, acesse o painel do Supabase:
+  SQL Editor → cole o conteudo do arquivo → Execute
+
+Ordem de execucao das migrations:
+  001_profiles.sql
+  002_seed_owner.sql
+  003_phase2_tables.sql
+  004_financial_entries_update.sql
+  005_suppliers_update.sql
+  006_clients_update.sql
+
+========================================

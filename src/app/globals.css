@@ -1,0 +1,133 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* ── Paleta Valente ─────────────────────────────────────── */
+  --color-cream:      #F4E2B8;
+  --color-gold:       #E6C07B;
+  --color-terracotta: #C68B59;
+  --color-brown:      #8A5A3B;
+  --color-dark:       #3B2418;
+  --color-gray-100:   #F9F7F4;
+  --color-gray-400:   #A89880;
+  --color-success:    #4A7C59;
+  --color-danger:     #8B3A3A;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Tema claro ─────────────────────────────────────────────── */
+:root {
+  --background:            oklch(1 0 0);
+  --foreground:            oklch(0.21 0.034 24.9);
+  --card:                  oklch(1 0 0);
+  --card-foreground:       oklch(0.21 0.034 24.9);
+  --popover:               oklch(1 0 0);
+  --popover-foreground:    oklch(0.21 0.034 24.9);
+  --primary:               oklch(0.627 0.115 38.7);
+  --primary-foreground:    oklch(1 0 0);
+  --secondary:             oklch(0.968 0.02 68.0);
+  --secondary-foreground:  oklch(0.21 0.034 24.9);
+  --muted:                 oklch(0.968 0.02 68.0);
+  --muted-foreground:      oklch(0.6 0.05 40.0);
+  --accent:                oklch(0.884 0.09 65.0);
+  --accent-foreground:     oklch(0.21 0.034 24.9);
+  --destructive:           oklch(0.444 0.10 15.0);
+  --border:                oklch(0.884 0.09 65.0);
+  --input:                 oklch(0.884 0.09 65.0);
+  --ring:                  oklch(0.627 0.115 38.7);
+  --radius:                0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@keyframes tab-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.tab-fade-in {
+  animation: tab-fade-in 150ms ease-out;
+}
+
+@keyframes form-slide-down {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.form-slide-down {
+  animation: form-slide-down 200ms ease-out;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ── Gráficos (Recharts/SVG): sem contorno preto de foco ao clicar ──
+   Escopo restrito aos elementos de gráfico — inputs, botões e links
+   mantêm o outline de foco normal (acessibilidade preservada). */
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-wrapper svg:focus,
+.recharts-wrapper svg:focus-visible,
+.recharts-wrapper svg *:focus,
+.recharts-wrapper svg *:focus-visible,
+.recharts-sector:focus,
+.recharts-sector:focus-visible,
+.recharts-bar-rectangle:focus,
+.recharts-bar-rectangle:focus-visible,
+.recharts-rectangle:focus,
+.recharts-rectangle:focus-visible,
+.recharts-layer:focus,
+.recharts-layer:focus-visible,
+.recharts-dot:focus,
+.recharts-dot:focus-visible {
+  outline: none !important;
+}
