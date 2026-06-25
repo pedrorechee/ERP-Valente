@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getActionClient } from '@/lib/supabase/action'
-import { computeWorkLogCost } from '@/lib/equipe'
+import { computeAutoCost } from '@/lib/equipe'
 import {
   PAYROLL_CATEGORY_CODE,
   type Attendance, type Employee, type EmploymentType, type ProjectTeam, type WorkLog,
@@ -155,16 +155,21 @@ type WorkLogResult =
   | { success: false; error: string }
 
 export interface WorkLogInput {
-  employee_id:  string
-  project_id:   string
-  phase_id:     string | null
-  log_date:     string
-  attendance:   Attendance
-  hours_worked: number
+  employee_id:         string
+  project_id:          string
+  phase_id:            string | null
+  log_date:            string
+  attendance:          Attendance
+  hours_worked:        number
+  standard_hours:      number
+  overtime_multiplier: number
+  cost_overridden:     boolean
+  manual_cost:         number | null
 }
 
 // Cria/atualiza UM apontamento (1 por funcionário/obra/dia). O custo é
 // calculado no servidor a partir dos dados do funcionário — fonte única.
+// Quando cost_overridden, computed_cost = manual_cost (override manual).
 // Mantém o vínculo com a folha (financial_entry_id) intacto em updates.
 export async function upsertWorkLog(input: WorkLogInput): Promise<WorkLogResult> {
   const { supabase } = await getActionClient()
@@ -176,18 +181,30 @@ export async function upsertWorkLog(input: WorkLogInput): Promise<WorkLogResult>
     .single()
   if (empErr || !emp) return { success: false, error: empErr?.message || 'Funcionário não encontrado' }
 
-  const computed_cost = computeWorkLogCost(emp as Employee, input.attendance)
+  const auto = computeAutoCost(emp as Employee, {
+    attendance: input.attendance,
+    hours_worked: input.hours_worked,
+    standard_hours: input.standard_hours,
+    overtime_multiplier: input.overtime_multiplier,
+  })
+  const manual_cost = input.cost_overridden ? (input.manual_cost ?? 0) : null
+  const computed_cost = manual_cost != null ? Math.round(manual_cost * 100) / 100 : auto.cost
 
   const { data, error } = await supabase
     .from('work_logs')
     .upsert(
       {
-        employee_id:  input.employee_id,
-        project_id:   input.project_id,
-        phase_id:     input.phase_id,
-        log_date:     input.log_date,
-        attendance:   input.attendance,
-        hours_worked: input.hours_worked,
+        employee_id:         input.employee_id,
+        project_id:          input.project_id,
+        phase_id:            input.phase_id,
+        log_date:            input.log_date,
+        attendance:          input.attendance,
+        hours_worked:        input.hours_worked,
+        standard_hours:      input.standard_hours,
+        overtime_hours:      auto.overtimeHours,
+        overtime_multiplier: input.overtime_multiplier,
+        manual_cost,
+        cost_overridden:     input.cost_overridden,
         computed_cost,
       },
       { onConflict: 'employee_id,project_id,log_date' },

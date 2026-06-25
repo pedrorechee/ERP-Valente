@@ -100,7 +100,9 @@
       "Bash(echo \"dashboard -> $\\(curl -s -o /dev/null -w '%{http_code}' --cookie 'dev-bypass=1' http://localhost:3000/dashboard --max-time 60\\)\")",
       "Bash(git remote *)",
       "Bash(git add *)",
-      "Bash(git commit -q -m ' *)"
+      "Bash(git commit -q -m ' *)",
+      "Bash(git config *)",
+      "Bash(git push *)"
     ]
   }
 }

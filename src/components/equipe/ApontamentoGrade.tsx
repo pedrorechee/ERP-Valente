@@ -1,12 +1,17 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronRight, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/format'
-import { computeWorkLogCost } from '@/lib/equipe'
+import {
+  computeAutoCost, DEFAULT_STANDARD_HOURS, DEFAULT_OVERTIME_MULTIPLIER,
+} from '@/lib/equipe'
+import { CurrencyInput } from '@/components/ui/currency-input'
 import { upsertWorkLog, deleteWorkLog } from '@/app/actions/equipe'
+import { toastAfterClose } from '@/lib/ui-feedback'
 import {
   ATTENDANCE_LABELS, type Attendance, type EmploymentType, type WorkLog,
 } from '@/types/database'
@@ -48,17 +53,22 @@ function weekLabel(monday: Date, sunday: Date): string {
   return `${d1} ${MONTHS_ABBR[monday.getMonth()]} – ${d2} ${MONTHS_ABBR[sunday.getMonth()]} de ${sunday.getFullYear()}`
 }
 
-const ATT_OPTIONS: { value: Attendance | ''; short: string }[] = [
-  { value: '', short: '—' },
-  { value: 'presente', short: 'P' },
-  { value: 'meio_periodo', short: '½' },
-  { value: 'falta', short: 'F' },
-  { value: 'atestado', short: 'A' },
+// Formata horas com vírgula decimal: 2.5 → "2,5"
+function fmtHours(n: number): string {
+  return n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+}
+
+const ATT_OPTIONS: { value: Attendance | ''; label: string }[] = [
+  { value: '', label: '—' },
+  { value: 'presente', label: ATTENDANCE_LABELS.presente },
+  { value: 'meio_periodo', label: ATTENDANCE_LABELS.meio_periodo },
+  { value: 'falta', label: ATTENDANCE_LABELS.falta },
+  { value: 'atestado', label: ATTENDANCE_LABELS.atestado },
 ]
 
-function defaultHours(att: Attendance): number {
-  if (att === 'presente') return 8
-  if (att === 'meio_periodo') return 4
+function defaultHours(att: Attendance, std: number): number {
+  if (att === 'presente') return std
+  if (att === 'meio_periodo') return std / 2
   return 0
 }
 
@@ -105,6 +115,9 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
     return m
   })
 
+  // Célula em edição (modal de ajuste de custo/hora extra)
+  const [editCell, setEditCell] = useState<{ emp: GradeEmployee; dateKey: string } | null>(null)
+
   function changeObra(id: string) {
     startTransition(() => router.push(id ? `/equipe/apontamento?obra=${id}` : '/equipe/apontamento'))
   }
@@ -121,27 +134,43 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
     })
   }
 
-  function setCell(emp: GradeEmployee, dateKey: string, attendance: Attendance | '') {
+  // ── Gravação de uma célula (cria/atualiza/limpa) ──
+  type CellPatch = {
+    attendance: Attendance | ''
+    hours_worked?: number
+    standard_hours?: number
+    overtime_multiplier?: number
+    cost_overridden?: boolean
+    manual_cost?: number | null
+  }
+
+  function saveCell(emp: GradeEmployee, dateKey: string, patch: CellPatch) {
     const key = `${emp.id}|${dateKey}`
     const existing = logs.get(key)
     const snapshot = new Map(logs)
 
     // Limpar célula → remover apontamento
-    if (!attendance) {
+    if (!patch.attendance) {
       if (!existing) return
       const next = new Map(logs); next.delete(key); setLogs(next)
       if (String(existing.id).startsWith('temp-')) return
       deleteWorkLog(existing.id, { projectId: selectedObra, employeeId: emp.id })
         .then((r) => { if (!r.success) throw new Error(r.error) })
-        .catch((err: Error) => {
-          setLogs(snapshot)
-          toast.error(err.message || 'Erro ao remover apontamento')
-        })
+        .catch((err: Error) => { setLogs(snapshot); toast.error(err.message || 'Erro ao remover apontamento') })
       return
     }
 
-    const phase_id = rowPhase[emp.id] || null
-    const hours = defaultHours(attendance)
+    const attendance = patch.attendance
+    const standard_hours = patch.standard_hours ?? existing?.standard_hours ?? DEFAULT_STANDARD_HOURS
+    const overtime_multiplier = patch.overtime_multiplier ?? existing?.overtime_multiplier ?? DEFAULT_OVERTIME_MULTIPLIER
+    const hours_worked = patch.hours_worked ?? existing?.hours_worked ?? defaultHours(attendance, standard_hours)
+    const cost_overridden = patch.cost_overridden ?? existing?.cost_overridden ?? false
+    const manual_cost = cost_overridden ? (patch.manual_cost ?? existing?.manual_cost ?? 0) : null
+    const phase_id = existing?.phase_id ?? rowPhase[emp.id] ?? null
+
+    const auto = computeAutoCost(emp, { attendance, hours_worked, standard_hours, overtime_multiplier })
+    const computed_cost = manual_cost != null ? Math.round(manual_cost * 100) / 100 : auto.cost
+
     const optimistic: WorkLog = {
       id: existing?.id ?? `temp-${key}`,
       employee_id: emp.id,
@@ -149,8 +178,13 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
       phase_id,
       log_date: dateKey,
       attendance,
-      hours_worked: hours,
-      computed_cost: computeWorkLogCost(emp, attendance),
+      hours_worked,
+      standard_hours,
+      overtime_hours: auto.overtimeHours,
+      overtime_multiplier,
+      manual_cost,
+      cost_overridden,
+      computed_cost,
       notes: existing?.notes ?? null,
       financial_entry_id: existing?.financial_entry_id ?? null,
       created_at: existing?.created_at ?? '',
@@ -163,34 +197,17 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
       phase_id,
       log_date: dateKey,
       attendance,
-      hours_worked: hours,
+      hours_worked,
+      standard_hours,
+      overtime_multiplier,
+      cost_overridden,
+      manual_cost,
     })
       .then((r) => {
         if (!r.success) throw new Error(r.error)
         setLogs((prev) => { const m = new Map(prev); m.set(key, r.workLog); return m })
       })
-      .catch((err: Error) => {
-        setLogs(snapshot)
-        toast.error(err.message || 'Erro ao salvar apontamento')
-      })
-  }
-
-  function setCellHours(emp: GradeEmployee, dateKey: string, hours: number) {
-    const key = `${emp.id}|${dateKey}`
-    const existing = logs.get(key)
-    if (!existing) return
-    const snapshot = new Map(logs)
-    const next = new Map(logs); next.set(key, { ...existing, hours_worked: hours }); setLogs(next)
-    upsertWorkLog({
-      employee_id: emp.id,
-      project_id: selectedObra,
-      phase_id: existing.phase_id,
-      log_date: dateKey,
-      attendance: existing.attendance,
-      hours_worked: hours,
-    })
-      .then((r) => { if (!r.success) throw new Error(r.error) })
-      .catch((err: Error) => { setLogs(snapshot); toast.error(err.message || 'Erro ao salvar horas') })
+      .catch((err: Error) => { setLogs(snapshot); toast.error(err.message || 'Erro ao salvar apontamento') })
   }
 
   // Totais
@@ -265,7 +282,12 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
       ) : employees.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gold/40 py-16 text-center">
           <p className="text-sm font-medium text-gray-400">Nenhum funcionário alocado nesta obra.</p>
-          <p className="mt-1 text-xs text-gray-400">Aloque funcionários na aba Equipe da obra para apontar.</p>
+          <Link
+            href={`/obras/${selectedObra}?tab=equipe`}
+            className="mt-2 text-xs text-terracotta hover:underline"
+          >
+            Aloque a equipe na aba Equipe da obra →
+          </Link>
         </div>
       ) : (
         <div className="rounded-xl border border-gold/30 bg-white shadow-sm overflow-hidden">
@@ -313,17 +335,19 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
                         const dateKey = toKey(d)
                         const log = logs.get(`${emp.id}|${dateKey}`)
                         const att = (log?.attendance ?? '') as Attendance | ''
+                        const ot = log?.overtime_hours ?? 0
+                        const normalH = log ? Math.max(0, (log.hours_worked ?? 0) - ot) : 0
                         return (
                           <td key={dateKey} className="px-2 py-2 text-center">
                             <select
                               value={att}
-                              onChange={(e) => setCell(emp, dateKey, e.target.value as Attendance | '')}
-                              className={`w-full rounded-md border px-1 py-1 text-xs focus:outline-none ${
+                              onChange={(e) => saveCell(emp, dateKey, { attendance: e.target.value as Attendance | '' })}
+                              className={`w-full min-w-[96px] rounded-md border px-1.5 py-1 text-xs focus:outline-none ${
                                 att === '' ? 'border-gold/30 text-gray-400' : 'border-gold/50 text-dark'
                               }`}
                               title={att ? ATTENDANCE_LABELS[att as Attendance] : 'Sem marcação'}
                             >
-                              {ATT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.short}</option>)}
+                              {ATT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                             {(att === 'presente' || att === 'meio_periodo') && (
                               <input
@@ -332,13 +356,26 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
                                 max={24}
                                 step={0.5}
                                 value={log?.hours_worked ?? 0}
-                                onChange={(e) => setCellHours(emp, dateKey, Number(e.target.value))}
-                                className="mt-1 w-14 rounded-md border border-gold/30 px-1 py-0.5 text-center text-[11px] text-gray-600 focus:border-terracotta focus:outline-none"
-                                title="Horas"
+                                onChange={(e) => saveCell(emp, dateKey, { attendance: att, hours_worked: Number(e.target.value) })}
+                                className="mt-1 w-16 rounded-md border border-gold/30 px-1 py-0.5 text-center text-[11px] text-gray-600 focus:border-terracotta focus:outline-none"
+                                title="Horas trabalhadas"
                               />
                             )}
+                            {ot > 0 && (
+                              <p className="mt-0.5 text-[10px] text-brown whitespace-nowrap">
+                                {fmtHours(normalH)}h + {fmtHours(ot)}h extra
+                              </p>
+                            )}
                             {log && (log.computed_cost ?? 0) > 0 && (
-                              <p className="mt-0.5 text-[10px] text-gray-400 whitespace-nowrap">{formatCurrency(log.computed_cost)}</p>
+                              <button
+                                type="button"
+                                onClick={() => setEditCell({ emp, dateKey })}
+                                title={log.cost_overridden ? 'Custo ajustado manualmente — clique para editar' : 'Clique para ajustar custo / hora extra'}
+                                className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-medium text-terracotta hover:text-brown hover:underline whitespace-nowrap"
+                              >
+                                {formatCurrency(log.computed_cost)}
+                                {log.cost_overridden && <span className="text-[#8A5A3B]" title="Custo ajustado manualmente">*</span>}
+                              </button>
                             )}
                           </td>
                         )
@@ -366,8 +403,171 @@ export function ApontamentoGrade({ projects, selectedObra, employees, phases, wo
       )}
 
       <p className="text-xs text-gray-400">
-        P = Presente · ½ = Meio período · F = Falta · A = Atestado. As marcações são salvas automaticamente.
+        As marcações são salvas automaticamente. Clique no valor em terracota para ajustar hora extra ou o custo manualmente.
       </p>
+
+      {editCell && (
+        <CellEditModal
+          emp={editCell.emp}
+          dateKey={editCell.dateKey}
+          log={logs.get(`${editCell.emp.id}|${editCell.dateKey}`) ?? null}
+          onSave={(patch) => saveCell(editCell.emp, editCell.dateKey, patch)}
+          onClose={() => setEditCell(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Modal de ajuste do apontamento (hora extra + custo manual) ──
+function CellEditModal({
+  emp, dateKey, log, onSave, onClose,
+}: {
+  emp: GradeEmployee
+  dateKey: string
+  log: WorkLog | null
+  onSave: (patch: {
+    attendance: Attendance
+    hours_worked: number
+    standard_hours: number
+    overtime_multiplier: number
+    cost_overridden: boolean
+    manual_cost: number | null
+  }) => void
+  onClose: () => void
+}) {
+  const [attendance, setAttendance] = useState<Attendance>((log?.attendance as Attendance) || 'presente')
+  const [standardHours, setStandardHours] = useState<number>(log?.standard_hours ?? DEFAULT_STANDARD_HOURS)
+  const [hours, setHours] = useState<number>(log?.hours_worked ?? log?.standard_hours ?? DEFAULT_STANDARD_HOURS)
+  const [multiplier, setMultiplier] = useState<number>(log?.overtime_multiplier ?? DEFAULT_OVERTIME_MULTIPLIER)
+  const [overrideOn, setOverrideOn] = useState<boolean>(log?.cost_overridden ?? false)
+  const [manualCost, setManualCost] = useState<number>(log?.manual_cost ?? log?.computed_cost ?? 0)
+
+  const usesHours = attendance === 'presente' || attendance === 'meio_periodo'
+  const auto = computeAutoCost(emp, {
+    attendance,
+    hours_worked: hours,
+    standard_hours: standardHours,
+    overtime_multiplier: multiplier,
+  })
+  const normalH = Math.max(0, hours - auto.overtimeHours)
+  const finalCost = overrideOn ? manualCost : auto.cost
+
+  function handleSave() {
+    onClose()
+    toastAfterClose('Apontamento atualizado')
+    onSave({
+      attendance,
+      hours_worked: hours,
+      standard_hours: standardHours,
+      overtime_multiplier: multiplier,
+      cost_overridden: overrideOn,
+      manual_cost: overrideOn ? manualCost : null,
+    })
+  }
+
+  const inputCls = 'w-full rounded-lg border border-gold/50 bg-white px-3 py-2 text-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta'
+  const lbl = 'text-xs font-semibold uppercase tracking-wide text-brown'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gold/20 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-dark">Ajustar apontamento</h2>
+            <p className="text-xs text-gray-400">{emp.name} · {dateKey.split('-').reverse().join('/')}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-dark">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <label className={lbl}>Presença</label>
+            <select value={attendance} onChange={(e) => setAttendance(e.target.value as Attendance)} className={inputCls}>
+              <option value="presente">{ATTENDANCE_LABELS.presente}</option>
+              <option value="meio_periodo">{ATTENDANCE_LABELS.meio_periodo}</option>
+              <option value="falta">{ATTENDANCE_LABELS.falta}</option>
+              <option value="atestado">{ATTENDANCE_LABELS.atestado}</option>
+            </select>
+          </div>
+
+          {usesHours && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <label className={lbl}>Horas</label>
+                <input type="number" min={0} max={24} step={0.5} value={hours}
+                  onChange={(e) => setHours(Number(e.target.value))} className={inputCls} />
+              </div>
+              <div className="space-y-1.5">
+                <label className={lbl}>Jornada</label>
+                <input type="number" min={1} max={24} step={0.5} value={standardHours}
+                  onChange={(e) => setStandardHours(Number(e.target.value))} className={inputCls} />
+              </div>
+              <div className="space-y-1.5">
+                <label className={lbl}>Mult. extra</label>
+                <input type="number" min={1} step={0.1} value={multiplier}
+                  onChange={(e) => setMultiplier(Number(e.target.value))} className={inputCls} />
+              </div>
+            </div>
+          )}
+
+          {/* Resumo do cálculo automático */}
+          <div className="rounded-lg border border-gold/30 bg-cream/20 px-3 py-2.5 text-sm">
+            {attendance === 'presente' && auto.overtimeHours > 0 ? (
+              <p className="text-gray-600">
+                {fmtHours(normalH)}h normais + <span className="text-brown font-medium">{fmtHours(auto.overtimeHours)}h extra</span> × {fmtHours(multiplier)}
+              </p>
+            ) : (
+              <p className="text-gray-500">{ATTENDANCE_LABELS[attendance]}</p>
+            )}
+            <p className="mt-0.5 text-dark">Custo automático: <span className="font-semibold">{formatCurrency(auto.cost)}</span></p>
+          </div>
+
+          {/* Override manual */}
+          <div className="space-y-2 rounded-lg border border-gold/30 px-3 py-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-dark">Ajustar custo manualmente</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={overrideOn}
+                onClick={() => setOverrideOn((v) => !v)}
+                className={`relative h-6 w-11 rounded-full transition-colors ${overrideOn ? 'bg-terracotta' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${overrideOn ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+            {overrideOn && (
+              <div className="space-y-2">
+                <CurrencyInput name="manual_cost" defaultValue={manualCost} onValueChange={setManualCost} className={inputCls} />
+                <button
+                  type="button"
+                  onClick={() => setOverrideOn(false)}
+                  className="text-xs font-medium text-terracotta hover:underline"
+                >
+                  Recalcular automático
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gold/20 pt-3">
+            <span className="text-sm text-gray-500">Custo final</span>
+            <span className="text-base font-bold text-dark">{formatCurrency(finalCost)}</span>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-dark hover:bg-[#F9F7F4] transition-colors">
+              Cancelar
+            </button>
+            <button type="button" onClick={handleSave} className="rounded-lg bg-terracotta px-5 py-2 text-sm font-medium text-white hover:bg-brown transition-colors">
+              Salvar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

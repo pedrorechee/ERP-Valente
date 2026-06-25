@@ -522,17 +522,24 @@ export interface ProjectTeam {
 }
 
 export interface WorkLog {
-  id:                 string
-  employee_id:        string
-  project_id:         string
-  phase_id:           string | null
-  log_date:           string
-  attendance:         Attendance
-  hours_worked:       number
-  computed_cost:      number
-  notes:              string | null
-  financial_entry_id: string | null
-  created_at:         string
+  id:                  string
+  employee_id:         string
+  project_id:          string
+  phase_id:            string | null
+  log_date:            string
+  attendance:          Attendance
+  hours_worked:        number
+  // Hora extra (sql/033)
+  standard_hours:      number   // jornada padrão do dia
+  overtime_hours:      number   // horas extras calculadas
+  overtime_multiplier: number   // adicional da hora extra (1.5 = 50%)
+  // Override manual de custo (sql/033)
+  manual_cost:         number | null
+  cost_overridden:     boolean
+  computed_cost:       number   // custo final (manual quando override, senão automático)
+  notes:               string | null
+  financial_entry_id:  string | null
+  created_at:          string
 }
 
 export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
